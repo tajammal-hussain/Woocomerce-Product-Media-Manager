@@ -78,6 +78,7 @@ class WC_PMM_Database {
         
         $default_settings = array(
             'watermark_enabled' => '1',
+            'watermark_type' => 'text', // 'text' or 'image'
             'watermark_position' => 'bottom-right',
             'watermark_opacity' => '70',
             'watermark_size' => '20',
@@ -86,7 +87,9 @@ class WC_PMM_Database {
             'watermark_font_color' => '#ffffff',
             'watermark_background_color' => '#000000',
             'watermark_padding' => '10',
-            'watermark_quality' => '90'
+            'watermark_quality' => '90',
+            'watermark_image_id' => '', // Attachment ID of watermark image
+            'watermark_image_scale' => '25' // Percentage of image width
         );
         
         foreach ($default_settings as $name => $value) {

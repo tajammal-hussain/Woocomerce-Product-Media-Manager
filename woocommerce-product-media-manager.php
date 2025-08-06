@@ -85,6 +85,7 @@ class WC_Product_Media_Manager {
         require_once WC_PMM_PLUGIN_DIR . 'includes/class-wc-pmm-database.php';
         require_once WC_PMM_PLUGIN_DIR . 'includes/class-wc-pmm-watermark.php';
         require_once WC_PMM_PLUGIN_DIR . 'includes/class-wc-pmm-ajax.php';
+        require_once WC_PMM_PLUGIN_DIR . 'includes/class-wc-pmm-settings.php';
     }
     
     /**
@@ -95,6 +96,7 @@ class WC_Product_Media_Manager {
         new WC_PMM_Database();
         new WC_PMM_Watermark();
         new WC_PMM_Ajax();
+        new WC_PMM_Settings();
     }
     
     /**

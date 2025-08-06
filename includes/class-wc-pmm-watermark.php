@@ -89,8 +89,12 @@ class WC_PMM_Watermark {
             return new WP_Error('image_creation_failed', __('Failed to create image resource.', 'wc-product-media-manager'));
         }
         
-        // Add watermark
-        $this->add_text_watermark($image, $width, $height, $settings);
+        // Add watermark based on type
+        if ($settings['watermark_type'] === 'image' && !empty($settings['watermark_image_id'])) {
+            $this->add_image_watermark($image, $width, $height, $settings);
+        } else {
+            $this->add_text_watermark($image, $width, $height, $settings);
+        }
         
         // Generate output path
         $path_info = pathinfo($original_path);
@@ -122,6 +126,89 @@ class WC_PMM_Watermark {
         }
         
         return $watermarked_path;
+    }
+    
+    /**
+     * Add image watermark to image
+     */
+    private function add_image_watermark($image, $width, $height, $settings) {
+        $watermark_attachment_id = intval($settings['watermark_image_id']);
+        $watermark_path = get_attached_file($watermark_attachment_id);
+        
+        if (!$watermark_path || !file_exists($watermark_path)) {
+            return; // Fallback to no watermark if image not found
+        }
+        
+        // Get watermark image info
+        $watermark_info = getimagesize($watermark_path);
+        if (!$watermark_info) {
+            return;
+        }
+        
+        $watermark_mime = $watermark_info['mime'];
+        
+        // Create watermark image resource
+        switch ($watermark_mime) {
+            case 'image/jpeg':
+                $watermark = imagecreatefromjpeg($watermark_path);
+                break;
+            case 'image/png':
+                $watermark = imagecreatefrompng($watermark_path);
+                // Preserve transparency
+                imagealphablending($watermark, false);
+                imagesavealpha($watermark, true);
+                break;
+            case 'image/gif':
+                $watermark = imagecreatefromgif($watermark_path);
+                break;
+            default:
+                return;
+        }
+        
+        if (!$watermark) {
+            return;
+        }
+        
+        // Calculate watermark size
+        $scale = intval($settings['watermark_image_scale']) / 100;
+        $watermark_width = intval($width * $scale);
+        $watermark_height = intval(($watermark_info[1] * $watermark_width) / $watermark_info[0]);
+        
+        // Calculate position
+        $padding = intval($settings['watermark_padding']);
+        $position = $this->calculate_image_watermark_position($width, $height, $watermark_width, $watermark_height, $padding, $settings['watermark_position']);
+        
+        // Create a resized watermark
+        $resized_watermark = imagecreatetruecolor($watermark_width, $watermark_height);
+        
+        // Preserve transparency for PNG
+        if ($watermark_mime === 'image/png') {
+            imagealphablending($resized_watermark, false);
+            imagesavealpha($resized_watermark, true);
+            $transparent = imagecolorallocatealpha($resized_watermark, 255, 255, 255, 127);
+            imagefill($resized_watermark, 0, 0, $transparent);
+        }
+        
+        // Resize watermark
+        imagecopyresampled(
+            $resized_watermark, $watermark,
+            0, 0, 0, 0,
+            $watermark_width, $watermark_height,
+            $watermark_info[0], $watermark_info[1]
+        );
+        
+        // Apply opacity if needed
+        $opacity = intval($settings['watermark_opacity']);
+        if ($opacity < 100) {
+            $this->apply_watermark_opacity($resized_watermark, $watermark_width, $watermark_height, $opacity);
+        }
+        
+        // Merge watermark with main image
+        imagecopy($image, $resized_watermark, $position['x'], $position['y'], 0, 0, $watermark_width, $watermark_height);
+        
+        // Clean up
+        imagedestroy($watermark);
+        imagedestroy($resized_watermark);
     }
     
     /**
@@ -161,7 +248,43 @@ class WC_PMM_Watermark {
     }
     
     /**
-     * Calculate watermark position
+     * Calculate watermark position for images
+     */
+    private function calculate_image_watermark_position($img_width, $img_height, $watermark_width, $watermark_height, $padding, $position) {
+        $positions = array(
+            'top-left' => array('x' => $padding, 'y' => $padding),
+            'top-right' => array('x' => $img_width - $watermark_width - $padding, 'y' => $padding),
+            'bottom-left' => array('x' => $padding, 'y' => $img_height - $watermark_height - $padding),
+            'bottom-right' => array('x' => $img_width - $watermark_width - $padding, 'y' => $img_height - $watermark_height - $padding),
+            'center' => array('x' => ($img_width - $watermark_width) / 2, 'y' => ($img_height - $watermark_height) / 2)
+        );
+        
+        return isset($positions[$position]) ? $positions[$position] : $positions['bottom-right'];
+    }
+    
+    /**
+     * Apply opacity to watermark image
+     */
+    private function apply_watermark_opacity($image, $width, $height, $opacity) {
+        $opacity_percent = $opacity / 100;
+        
+        // Create a transparent overlay
+        $overlay = imagecreatetruecolor($width, $height);
+        $bg_color = imagecolorallocate($overlay, 255, 255, 255);
+        imagefill($overlay, 0, 0, $bg_color);
+        
+        // Merge with opacity
+        imagecopymerge($overlay, $image, 0, 0, 0, 0, $width, $height, $opacity);
+        
+        // Copy back to original
+        imagecopy($image, $overlay, 0, 0, 0, 0, $width, $height);
+        
+        // Clean up
+        imagedestroy($overlay);
+    }
+    
+    /**
+     * Calculate watermark position for text
      */
     private function calculate_watermark_position($img_width, $img_height, $text_width, $text_height, $padding, $position) {
         $positions = array(
@@ -228,6 +351,7 @@ class WC_PMM_Watermark {
     private function get_default_settings() {
         return array(
             'watermark_enabled' => WC_PMM_Database::get_watermark_setting('watermark_enabled', '1'),
+            'watermark_type' => WC_PMM_Database::get_watermark_setting('watermark_type', 'text'),
             'watermark_position' => WC_PMM_Database::get_watermark_setting('watermark_position', 'bottom-right'),
             'watermark_opacity' => WC_PMM_Database::get_watermark_setting('watermark_opacity', '70'),
             'watermark_size' => WC_PMM_Database::get_watermark_setting('watermark_size', '20'),
@@ -236,7 +360,9 @@ class WC_PMM_Watermark {
             'watermark_font_color' => WC_PMM_Database::get_watermark_setting('watermark_font_color', '#ffffff'),
             'watermark_background_color' => WC_PMM_Database::get_watermark_setting('watermark_background_color', '#000000'),
             'watermark_padding' => WC_PMM_Database::get_watermark_setting('watermark_padding', '10'),
-            'watermark_quality' => WC_PMM_Database::get_watermark_setting('watermark_quality', '90')
+            'watermark_quality' => WC_PMM_Database::get_watermark_setting('watermark_quality', '90'),
+            'watermark_image_id' => WC_PMM_Database::get_watermark_setting('watermark_image_id', ''),
+            'watermark_image_scale' => WC_PMM_Database::get_watermark_setting('watermark_image_scale', '25')
         );
     }
     
