@@ -13,8 +13,7 @@ class WC_PMM_Watermark {
      * Constructor
      */
     public function __construct() {
-        // Hook for generating watermarks
-        add_action('wp_ajax_wc_pmm_generate_watermark', array($this, 'ajax_generate_watermark'));
+        // No AJAX hooks here - they are handled in WC_PMM_Ajax class
     }
     
     /**
@@ -241,39 +240,5 @@ class WC_PMM_Watermark {
         );
     }
     
-    /**
-     * AJAX handler for generating watermark
-     */
-    public function ajax_generate_watermark() {
-        // Check nonce
-        if (!wp_verify_nonce($_POST['nonce'], 'wc_pmm_nonce')) {
-            wp_die(__('Security check failed.', 'wc-product-media-manager'));
-        }
-        
-        // Check permissions
-        if (!current_user_can('edit_posts')) {
-            wp_die(__('You do not have permission to perform this action.', 'wc-product-media-manager'));
-        }
-        
-        $attachment_id = intval($_POST['attachment_id']);
-        
-        if (!$attachment_id) {
-            wp_send_json_error(__('Invalid attachment ID.', 'wc-product-media-manager'));
-        }
-        
-        // Generate watermark
-        $watermark_id = $this->generate_watermark($attachment_id);
-        
-        if (is_wp_error($watermark_id)) {
-            wp_send_json_error($watermark_id->get_error_message());
-        }
-        
-        // Return success with watermark URL
-        $watermark_url = wp_get_attachment_image_url($watermark_id, 'thumbnail');
-        
-        wp_send_json_success(array(
-            'watermark_id' => $watermark_id,
-            'watermark_url' => $watermark_url
-        ));
-    }
+
 }

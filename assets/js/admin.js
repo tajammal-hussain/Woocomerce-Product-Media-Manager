@@ -34,6 +34,12 @@
             $(document).on('click', '.wc-pmm-delete-image', this.deleteImage.bind(this));
             $(document).on('change', '.wc-pmm-sku-input', this.updateSKU.bind(this));
             
+            // Bulk watermark button - using direct binding
+            $(document).on('click', '#wc-pmm-bulk-watermark', function(e) {
+                console.log('Bulk watermark button clicked');
+                wcPMM.bulkGenerateWatermarks(e);
+            });
+            
             // Form submission
             $('#post').on('submit', this.saveMediaData.bind(this));
             
@@ -172,9 +178,16 @@
             this.mediaData.push(newItem);
             this.renderMediaTable();
             this.updateMediaDataField();
+            
+            // Auto-generate watermark for new images
+            let newIndex = this.mediaData.length - 1;
+            this.autoGenerateWatermark(newIndex);
         },
         
         renderMediaTable: function() {
+            // First, save current SKU values from input fields before re-rendering
+            this.saveCurrentSKUs();
+            
             let tbody = $('#wc-pmm-media-tbody');
             tbody.empty();
             
@@ -198,6 +211,18 @@
             this.initSortable();
         },
         
+        saveCurrentSKUs: function() {
+            // Save current SKU values from input fields
+            $('.wc-pmm-sku-input').each(function() {
+                let index = $(this).closest('tr').data('index');
+                let sku = $(this).val();
+                
+                if (wcPMM.mediaData[index] && sku) {
+                    wcPMM.mediaData[index].sku = sku;
+                }
+            });
+        },
+        
         createMediaRow: function(media, index) {
             let watermarkHtml = '';
             
@@ -218,7 +243,7 @@
             }
             
             // Use filename as default SKU if no SKU is set
-            // let displaySku = media.sku || media.filename.replace(/\.[^/.]+$/, "");
+            let displaySku = media.sku || media.filename.replace(/\.[^/.]+$/, "");
             
             return `
                 <tr class="wc-pmm-media-row" data-index="${index}">
@@ -241,7 +266,7 @@
                         </div>
                     </td>
                     <td class="wc-pmm-image-sku">
-                        <input type="text" class="wc-pmm-sku-input" value="" placeholder="Enter SKU">
+                        <input type="text" class="wc-pmm-sku-input" value="${displaySku}" placeholder="Enter SKU">
                     </td>
                     <td class="wc-pmm-actions">
                         <button type="button" class="button button-small wc-pmm-delete-image" data-index="${index}" title="Delete Image">
@@ -288,6 +313,120 @@
                     button.prop('disabled', false).text(originalText);
                 }
             });
+        },
+        
+        autoGenerateWatermark: function(index) {
+            let mediaItem = this.mediaData[index];
+            
+            if (!mediaItem || mediaItem.watermark_id) return;
+            
+            // Add a slight delay to allow the table to render first
+            setTimeout(() => {
+                $.ajax({
+                    url: wc_pmm_ajax.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wc_pmm_generate_watermark',
+                        attachment_id: mediaItem.attachment_id,
+                        nonce: wc_pmm_ajax.nonce
+                    },
+                    success: (response) => {
+                        if (response.success) {
+                            this.mediaData[index].watermark_id = response.data.watermark_id;
+                            this.mediaData[index].watermark_url = response.data.watermark_url;
+                            this.renderMediaTable();
+                            this.updateMediaDataField();
+                        }
+                    },
+                    error: () => {
+                        // Silently fail for auto-generation, user can manually retry
+                    }
+                });
+            }, 500);
+        },
+        
+        bulkGenerateWatermarks: function(e) {
+            e.preventDefault();
+            
+            console.log('Bulk watermark generation started');
+            
+            let itemsToProcess = [];
+            
+            this.mediaData.forEach((item, index) => {
+                if (!item.watermark_id) {
+                    itemsToProcess.push(index);
+                }
+            });
+            
+            console.log('Items to process:', itemsToProcess.length);
+            
+            if (itemsToProcess.length === 0) {
+                this.showSuccess('All images already have watermarks!');
+                return;
+            }
+            
+            let processed = 0;
+            let total = itemsToProcess.length;
+            let button = $('#wc-pmm-bulk-watermark');
+            
+            button.prop('disabled', true).text(`Processing... (0/${total})`);
+            
+            // Process items one by one with delay
+            let processNext = (currentIndex) => {
+                if (currentIndex >= itemsToProcess.length) {
+                    // All done
+                    this.renderMediaTable();
+                    this.updateMediaDataField();
+                    button.prop('disabled', false).text('Generate All Watermarks');
+                    this.showSuccess(`Generated watermarks for ${processed} images!`);
+                    return;
+                }
+                
+                let index = itemsToProcess[currentIndex];
+                let mediaItem = this.mediaData[index];
+                
+                console.log('Processing item:', index, mediaItem);
+                
+                $.ajax({
+                    url: wc_pmm_ajax.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wc_pmm_generate_watermark',
+                        attachment_id: mediaItem.attachment_id,
+                        nonce: wc_pmm_ajax.nonce
+                    },
+                    success: (response) => {
+                        processed++;
+                        console.log('Watermark generated for item:', index, response);
+                        
+                        if (response.success) {
+                            this.mediaData[index].watermark_id = response.data.watermark_id;
+                            this.mediaData[index].watermark_url = response.data.watermark_url;
+                        }
+                        
+                        button.text(`Processing... (${processed}/${total})`);
+                        
+                        // Process next item after delay
+                        setTimeout(() => {
+                            processNext(currentIndex + 1);
+                        }, 1000);
+                    },
+                    error: (xhr, status, error) => {
+                        processed++;
+                        console.error('Error generating watermark for item:', index, error);
+                        
+                        button.text(`Processing... (${processed}/${total})`);
+                        
+                        // Process next item after delay even if this one failed
+                        setTimeout(() => {
+                            processNext(currentIndex + 1);
+                        }, 1000);
+                    }
+                });
+            };
+            
+            // Start processing
+            processNext(0);
         },
         
         deleteImage: function(e) {
@@ -385,7 +524,11 @@
                             sku: defaultSku
                         };
                         
+                        let newIndex = this.mediaData.length;
                         this.mediaData.push(newItem);
+                        
+                        // Auto-generate watermark for new images from media library
+                        this.autoGenerateWatermark(newIndex);
                     });
                     
                     this.renderMediaTable();

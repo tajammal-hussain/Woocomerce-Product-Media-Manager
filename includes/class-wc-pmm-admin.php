@@ -75,7 +75,12 @@ class WC_PMM_Admin {
             
             <!-- Media Table -->
             <div class="wc-pmm-media-section">
-                <h4><?php _e('Product Media Gallery', 'wc-product-media-manager'); ?></h4>
+                <div class="wc-pmm-media-header">
+                    <h4><?php _e('Product Media Gallery', 'wc-product-media-manager'); ?></h4>
+                    <button type="button" id="wc-pmm-bulk-watermark" class="button button-secondary">
+                        <?php _e('Generate All Watermarks', 'wc-product-media-manager'); ?>
+                    </button>
+                </div>
                 <div class="wc-pmm-table-container">
                     <table id="wc-pmm-media-table" class="wp-list-table widefat fixed striped">
                         <thead>

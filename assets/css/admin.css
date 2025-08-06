@@ -109,11 +109,23 @@
 }
 
 /* Media Section */
+.wc-pmm-media-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
 .wc-pmm-media-section h4 {
-    margin: 0 0 15px 0;
+    margin: 0;
     font-size: 14px;
     font-weight: 600;
     color: #1d2327;
+}
+
+#wc-pmm-bulk-watermark {
+    font-size: 13px;
+    padding: 6px 12px;
 }
 
 .wc-pmm-table-container {
