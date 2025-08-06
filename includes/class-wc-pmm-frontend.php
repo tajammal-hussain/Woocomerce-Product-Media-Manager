@@ -14,6 +14,20 @@ class WC_PMM_Frontend {
      */
     public function __construct() {
         add_shortcode('wc_pmm_simple_gallery', array($this, 'simple_gallery_shortcode'));
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
+        add_action('wp_ajax_wc_pmm_load_more_images', array($this, 'ajax_load_more_images'));
+        add_action('wp_ajax_nopriv_wc_pmm_load_more_images', array($this, 'ajax_load_more_images'));
+    }
+    
+    /**
+     * Enqueue scripts for infinite scroll
+     */
+    public function enqueue_scripts() {
+        wp_enqueue_script('jquery');
+        wp_localize_script('jquery', 'wc_pmm_ajax', array(
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('wc_pmm_nonce')
+        ));
     }
     
     /**
@@ -92,12 +106,19 @@ class WC_PMM_Frontend {
             <div class="wc-pmm-product-header">
                 <h3><?php _e('Products in this category:', 'wc-product-media-manager'); ?></h3>
                 <div class="wc-pmm-product-links">
-                    <?php foreach ($products_with_media as $product_data): ?>
-                        <a href="<?php echo esc_url($product_data['product']->get_permalink()); ?>" 
-                           target="_blank" 
-                           class="wc-pmm-product-link">
+                    <?php foreach ($products_with_media as $index => $product_data): ?>
+                        <button type="button"
+                                data-product-id="<?php echo esc_attr($product_data['product']->get_id()); ?>"
+                                data-product-name="<?php echo esc_attr($product_data['product']->get_name()); ?>"
+                                class="wc-pmm-product-link <?php echo $index === 0 ? 'active' : ''; ?>">
                             <?php echo esc_html($product_data['product']->get_name()); ?>
                             <span class="wc-pmm-media-count">(<?php echo $product_data['media_count']; ?> images)</span>
+                        </button>
+                        <a href="<?php echo esc_url($product_data['product']->get_permalink()); ?>" 
+                           target="_blank" 
+                           class="wc-pmm-external-link"
+                           title="<?php _e('View product page', 'wc-product-media-manager'); ?>">
+                            <span class="dashicons dashicons-external"></span>
                         </a>
                     <?php endforeach; ?>
                 </div>
@@ -127,6 +148,16 @@ class WC_PMM_Frontend {
                     </div>
                 <?php endforeach; ?>
             </div>
+            
+            <!-- Loading indicator -->
+            <div id="wc-pmm-loading" class="wc-pmm-loading" style="display: none;">
+                <p><?php _e('Loading more images...', 'wc-product-media-manager'); ?></p>
+            </div>
+            
+            <!-- No more images indicator -->
+            <div id="wc-pmm-no-more" class="wc-pmm-no-more" style="display: none;">
+                <p><?php _e('No more images to load.', 'wc-product-media-manager'); ?></p>
+            </div>
         </div>
         
         <style>
@@ -146,23 +177,47 @@ class WC_PMM_Frontend {
         .wc-pmm-product-links {
             display: flex;
             flex-wrap: wrap;
-            gap: 15px;
+            gap: 10px;
             margin-bottom: 15px;
+            align-items: center;
         }
         .wc-pmm-product-link {
             color: #0073aa;
-            text-decoration: none;
+            background: #fff;
             font-weight: bold;
             padding: 8px 12px;
             border: 1px solid #0073aa;
             border-radius: 4px;
             transition: all 0.3s ease;
-            display: inline-block;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
         }
         .wc-pmm-product-link:hover {
             color: #fff;
             background-color: #0073aa;
+        }
+        .wc-pmm-product-link.active {
+            color: #fff;
+            background-color: #0073aa;
+            box-shadow: 0 2px 4px rgba(0,115,170,0.3);
+        }
+        .wc-pmm-external-link {
+            color: #666;
             text-decoration: none;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+        }
+        .wc-pmm-external-link:hover {
+            color: #0073aa;
+            border-color: #0073aa;
         }
         .wc-pmm-media-count {
             color: inherit;
@@ -201,7 +256,260 @@ class WC_PMM_Frontend {
             border-radius: 4px;
             color: #856404;
         }
+        .wc-pmm-loading {
+            text-align: center;
+            padding: 20px;
+            font-style: italic;
+            color: #666;
+        }
+        .wc-pmm-no-more {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+            font-style: italic;
+        }
         </style>
+        
+        <script type="text/javascript">
+        jQuery(document).ready(function($) {
+            let currentPage = 1;
+            let loading = false;
+            let noMore = false;
+            const productId = <?php echo $first_product_with_media->get_id(); ?>;
+            const categorySlug = '<?php echo esc_js($category_slug); ?>';
+            const imagesGrid = $('.row-masonry');
+            const loadingIndicator = $('#wc-pmm-loading');
+            const noMoreIndicator = $('#wc-pmm-no-more');
+            
+            // Check if total images are more than 15 to enable infinite scroll
+            const totalImages = <?php echo $media_response['total']; ?>;
+            if (totalImages <= 15) {
+                return; // No need for infinite scroll
+            }
+            
+            // Function to reinitialize layout
+            function reinitializeLayout() {
+                // Reinitialize Fancybox if it exists
+                if (typeof $.fancybox !== 'undefined') {
+                    $('[data-fancybox="products"]').fancybox();
+                }
+                
+                // Reinitialize Packery layout with proper timing
+                setTimeout(function() {
+                    if (typeof imagesGrid.packery === 'function') {
+                        imagesGrid.packery('reloadItems').packery();
+                    } else if (typeof imagesGrid.isotope === 'function') {
+                        imagesGrid.isotope('reloadItems').isotope('layout');
+                    }
+                    
+                    // Alternative method for Packery if using data attributes
+                    if (imagesGrid.data('packery-options')) {
+                        imagesGrid.trigger('resize');
+                        if (typeof imagesGrid.packery === 'function') {
+                            imagesGrid.packery();
+                        }
+                    }
+                }, 200);
+            }
+            
+            // Function to load product images
+            function loadProductImages(productId, productName) {
+                // Reset state
+                currentPage = 1;
+                loading = false;
+                noMore = false;
+                
+                // Clear current images
+                imagesGrid.empty();
+                
+                // Show loading
+                loadingIndicator.show();
+                noMoreIndicator.hide();
+                
+                // Update "showing from" text
+                $('.wc-pmm-showing-from strong').text(productName);
+                
+                $.ajax({
+                    url: wc_pmm_ajax.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wc_pmm_load_more_images',
+                        nonce: wc_pmm_ajax.nonce,
+                        product_id: productId,
+                        page: 1,
+                        per_page: 15
+                    },
+                    success: function(response) {
+                        if (response.success && response.data.images.length > 0) {
+                            const images = response.data.images;
+                            
+                            let newElements = [];
+                            images.forEach(function(image) {
+                                const newElement = $(`
+                                    <div class="gallery-col col">
+                                        <div class="col-inner">
+                                            <a href="${image.watermark_url}"
+                                               data-productid="${productId}"
+                                               data-fancybox="products"
+                                               data-sku="${image.sku}"
+                                               data-caption="${productName}"
+                                               aria-label="${productName}">
+                                                <img src="${image.watermark_url}" 
+                                                     alt="${image.sku}"
+                                                     class="wc-pmm-watermarked-image" />
+                                            </a>
+                                        </div>
+                                    </div>
+                                `);
+                                newElements.push(newElement[0]);
+                                imagesGrid.append(newElement);
+                            });
+                            
+                            // Wait for images to load
+                            let imagesLoaded = 0;
+                            const totalNewImages = images.length;
+                            
+                            $(newElements).find('img').each(function() {
+                                const img = new Image();
+                                img.onload = function() {
+                                    imagesLoaded++;
+                                    if (imagesLoaded === totalNewImages) {
+                                        reinitializeLayout();
+                                    }
+                                };
+                                img.src = this.src;
+                            });
+                            
+                            // Check if we need to enable infinite scroll for this product
+                            if (response.data.total > 15) {
+                                // Enable infinite scroll for this product
+                            } else {
+                                noMore = true;
+                            }
+                        }
+                        
+                        loadingIndicator.hide();
+                    },
+                    error: function() {
+                        loadingIndicator.hide();
+                        console.log('Error loading product images');
+                    }
+                });
+            }
+            
+            // Product click handler
+            $('.wc-pmm-product-link').on('click', function(e) {
+                e.preventDefault();
+                
+                const button = $(this);
+                const productId = button.data('product-id');
+                const productName = button.data('product-name');
+                
+                // Update active state
+                $('.wc-pmm-product-link').removeClass('active');
+                button.addClass('active');
+                
+                // Load product images
+                loadProductImages(productId, productName);
+            });
+            
+            function loadMoreImages() {
+                if (loading || noMore) return;
+                
+                // Get current active product
+                const activeButton = $('.wc-pmm-product-link.active');
+                const currentProductId = activeButton.data('product-id');
+                const currentProductName = activeButton.data('product-name');
+                
+                if (!currentProductId) return;
+                
+                loading = true;
+                loadingIndicator.show();
+                
+                $.ajax({
+                    url: wc_pmm_ajax.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wc_pmm_load_more_images',
+                        nonce: wc_pmm_ajax.nonce,
+                        product_id: currentProductId,
+                        page: currentPage + 1,
+                        per_page: 15
+                    },
+                    success: function(response) {
+                        if (response.success && response.data.images.length > 0) {
+                            const images = response.data.images;
+                            
+                            let newElements = [];
+                            images.forEach(function(image) {
+                                const newElement = $(`
+                                    <div class="gallery-col col">
+                                        <div class="col-inner">
+                                            <a href="${image.watermark_url}"
+                                               data-productid="${currentProductId}"
+                                               data-fancybox="products"
+                                               data-sku="${image.sku}"
+                                               data-caption="${currentProductName}"
+                                               aria-label="${currentProductName}">
+                                                <img src="${image.watermark_url}" 
+                                                     alt="${image.sku}"
+                                                     class="wc-pmm-watermarked-image" />
+                                            </a>
+                                        </div>
+                                    </div>
+                                `);
+                                newElements.push(newElement[0]);
+                                imagesGrid.append(newElement);
+                            });
+                            
+                            // Wait for images to load before reinitializing layout
+                            let imagesLoaded = 0;
+                            const totalNewImages = images.length;
+                            
+                            $(newElements).find('img').each(function() {
+                                const img = new Image();
+                                img.onload = function() {
+                                    imagesLoaded++;
+                                    if (imagesLoaded === totalNewImages) {
+                                        // All images loaded, now reinitialize layout
+                                        reinitializeLayout();
+                                    }
+                                };
+                                img.src = this.src;
+                            });
+                            
+                            currentPage++;
+                            
+                            // Check if no more images
+                            if (images.length < 15) {
+                                noMore = true;
+                                noMoreIndicator.show();
+                            }
+                            
+                        } else {
+                            noMore = true;
+                            noMoreIndicator.show();
+                        }
+                        
+                        loading = false;
+                        loadingIndicator.hide();
+                    },
+                    error: function() {
+                        loading = false;
+                        loadingIndicator.hide();
+                        console.log('Error loading more images');
+                    }
+                });
+            }
+            
+            // Infinite scroll trigger
+            $(window).scroll(function() {
+                if ($(window).scrollTop() + $(window).height() >= $(document).height() - 100) {
+                    loadMoreImages();
+                }
+            });
+        });
+        </script>
         <?php
         
         return ob_get_clean();
@@ -247,5 +555,31 @@ class WC_PMM_Frontend {
             'images' => $images,
             'total' => $total
         );
+    }
+    
+    /**
+     * AJAX handler for loading more images
+     */
+    public function ajax_load_more_images() {
+        // Verify nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'wc_pmm_nonce')) {
+            wp_die('Security check failed');
+        }
+        
+        $product_id = intval($_POST['product_id']);
+        $page = intval($_POST['page']);
+        $per_page = intval($_POST['per_page']);
+        
+        if (!$product_id || !$page || !$per_page) {
+            wp_send_json_error('Invalid parameters');
+        }
+        
+        $media_response = $this->get_product_media_for_display($product_id, $page, $per_page);
+        
+        if (empty($media_response['images'])) {
+            wp_send_json_error('No more images');
+        }
+        
+        wp_send_json_success($media_response);
     }
 }
