@@ -24,6 +24,14 @@ class WC_PMM_Frontend {
      */
     public function enqueue_scripts() {
         wp_enqueue_script('jquery');
+        
+        wp_enqueue_script( "isotope-grid-main", 
+        WC_PMM_PLUGIN_URL . '/assets/js/isotope.pkgd.min.js', 
+        array('jquery'), 
+        '1.0.0', 
+        true );
+
+      
         wp_localize_script('jquery', 'wc_pmm_ajax', array(
             'ajax_url' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('wc_pmm_nonce')
@@ -123,7 +131,7 @@ class WC_PMM_Frontend {
             </div>
             
             <!-- Images Grid -->
-            <div class="row large-columns-4 medium-columns-3 small-columns-2 row-full-width row-masonry" data-packery-options='{"itemSelector": ".gallery-col", "gutter": 10, "presentageWidth" : true}'>
+            <div class="row large-columns-4 medium-columns-3 small-columns-2 row-full-width row-masonry isotope-grid">
                 <?php foreach ($images as $image): ?>
                     <div class=" gallery-col col">
                     <div class="col-inner">
@@ -274,33 +282,45 @@ class WC_PMM_Frontend {
             const loadingIndicator = $('#wc-pmm-loading');
             const noMoreIndicator = $('#wc-pmm-no-more');
             
+            // Initialize Isotope on page load
+            function initializeIsotope() {
+                setTimeout(function() {
+                    if (typeof imagesGrid.isotope === 'function') {
+                        imagesGrid.isotope({
+                            itemSelector: '.gallery-col',
+                            layoutMode: 'masonry',
+                            masonry: {
+                                columnWidth: '.gallery-col'
+                            }
+                        });
+                    }
+                }, 100);
+            }
+            
+            // Initialize Isotope immediately for existing images
+            initializeIsotope();
+            
             // Check if total images are more than 15 to enable infinite scroll
             const totalImages = <?php echo $media_response['total']; ?>;
             if (totalImages <= 15) {
                 return; // No need for infinite scroll
             }
             
-            // Function to reinitialize layout
-            function reinitializeLayout() {
+            // Function to append items to Isotope layout
+            function appendToIsotope(newElements) {
                 // Reinitialize Fancybox if it exists
                 if (typeof $.fancybox !== 'undefined') {
                     $('[data-fancybox="products"]').fancybox();
                 }
                 
-                // Reinitialize Packery layout with proper timing
+                // Append items to Isotope layout
                 setTimeout(function() {
-                    if (typeof imagesGrid.packery === 'function') {
-                        imagesGrid.packery('reloadItems').packery();
-                    } else if (typeof imagesGrid.isotope === 'function') {
-                        imagesGrid.isotope('reloadItems').isotope('layout');
-                    }
-                    
-                    // Alternative method for Packery if using data attributes
-                    if (imagesGrid.data('packery-options')) {
-                        imagesGrid.trigger('resize');
-                        if (typeof imagesGrid.packery === 'function') {
-                            imagesGrid.packery();
-                        }
+                    if (typeof imagesGrid.isotope === 'function') {
+                        // Append to DOM first, then to Isotope
+                        newElements.forEach(function(element) {
+                            imagesGrid.append(element);
+                        });
+                        imagesGrid.isotope('appended', newElements);
                     }
                 }, 200);
             }
@@ -370,7 +390,10 @@ class WC_PMM_Frontend {
                                 img.onload = function() {
                                     imagesLoaded++;
                                     if (imagesLoaded === totalNewImages) {
-                                        reinitializeLayout();
+                                        // Reinitialize Isotope layout for new images
+                                        if (typeof imagesGrid.isotope === 'function') {
+                                            imagesGrid.isotope('reloadItems').isotope();
+                                        }
                                     }
                                 };
                                 img.src = this.src;
@@ -458,10 +481,9 @@ class WC_PMM_Frontend {
                                     </div>
                                 `);
                                 newElements.push(newElement[0]);
-                                imagesGrid.append(newElement);
                             });
                             
-                            // Wait for images to load before reinitializing layout
+                            // Wait for images to load before appending to layout
                             let imagesLoaded = 0;
                             const totalNewImages = images.length;
                             
@@ -470,8 +492,8 @@ class WC_PMM_Frontend {
                                 img.onload = function() {
                                     imagesLoaded++;
                                     if (imagesLoaded === totalNewImages) {
-                                        // All images loaded, now reinitialize layout
-                                        reinitializeLayout();
+                                        // All images loaded, now append to layout
+                                        appendToIsotope(newElements);
                                     }
                                 };
                                 img.src = this.src;
