@@ -1,10 +1,10 @@
 <?php
 /**
  * Plugin Name: WooCommerce Product Media Manager
- * Plugin URI: https://your-website.com
+ * Plugin URI: https://hifidevs.com
  * Description: Advanced media management for WooCommerce products with drag & drop functionality and watermarking
  * Version: 1.0.0
- * Author: Your Name
+ * Author: Hussain
  * License: GPL v2 or later
  * Text Domain: wc-product-media-manager
  * Domain Path: /languages

@@ -365,10 +365,14 @@ public function add_cart_item_custom_data($cart_item_data, $product_id, $variati
 public function display_cart_item_custom_data($item_data, $cart_item) {
     if (isset($cart_item['wc_pmm_image_variation'])) {
         $image_data = $cart_item['wc_pmm_image_variation'];
+        
+        // Use watermarked image URL for cart display
+        $watermarked_url = $image_data['watermark_url'];
+        
         $item_data[] = array(
             'key' => __('Selected Image', 'wc-product-media-manager'),
             'value' => $image_data['sku'],
-            'display' => '<img src="' . esc_url($image_data['watermark_url']) . '" width="50" height="50" style="border-radius: 3px; margin-right: 10px; vertical-align: middle;"> ' . esc_html($image_data['sku'])
+            'display' => '<img src="' . esc_url($watermarked_url) . '" width="50" height="50" style="border-radius: 3px; margin-right: 10px; vertical-align: middle;"> ' . esc_html($image_data['sku'])
         );
     }
     return $item_data;
@@ -380,9 +384,16 @@ public function display_cart_item_custom_data($item_data, $cart_item) {
 public function save_order_item_custom_data($item, $cart_item_key, $values, $order) {
     if (isset($values['wc_pmm_image_variation'])) {
         $image_data = $values['wc_pmm_image_variation'];
+        
+        // Get the original image URL instead of watermarked URL
+        $original_url = wp_get_attachment_url($image_data['attachment_id']);
+        
+        // Update the image data with original URL for order confirmation
+        $image_data['original_url'] = $original_url;
+        
         $item->add_meta_data('_wc_pmm_selected_image', $image_data);
         $item->add_meta_data('Selected Image SKU', $image_data['sku']);
-        $item->add_meta_data('Selected Image URL', $image_data['watermark_url']);
+        $item->add_meta_data('Selected Image URL', $original_url); // Use original URL instead of watermarked
     }
 }
 }
