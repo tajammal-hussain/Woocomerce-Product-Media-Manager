@@ -20,6 +20,10 @@ class WC_PMM_Ajax {
         add_action('wp_ajax_wc_pmm_generate_watermark', array($this, 'ajax_generate_watermark'));
         add_action('wp_ajax_wc_pmm_update_image_sku', array($this, 'ajax_update_image_sku'));
         add_action('wp_ajax_wc_pmm_get_media_library', array($this, 'ajax_get_media_library'));
+        add_action('wp_ajax_wc_pmm_add_to_cart_with_image', array($this, 'ajax_add_to_cart_with_image'));
+        add_filter('woocommerce_add_cart_item_data', array($this, 'add_cart_item_custom_data'), 10, 3);
+        add_filter('woocommerce_get_item_data', array($this, 'display_cart_item_custom_data'), 10, 2);
+        add_action('woocommerce_checkout_create_order_line_item', array($this, 'save_order_item_custom_data'), 10, 4);
     }
     
     /**
@@ -305,4 +309,80 @@ class WC_PMM_Ajax {
             'current_page' => $page
         ));
     }
+
+
+    /**
+ * AJAX handler for adding to cart with specific image
+ */
+public function ajax_add_to_cart_with_image() {
+    // Verify nonce
+    if (!wp_verify_nonce($_POST['nonce'], 'wc_pmm_nonce')) {
+        wp_die('Security check failed');
+    }
+    
+    $product_id = intval($_POST['product_id']);
+    $attachment_id = intval($_POST['attachment_id']);
+    $watermark_id = intval($_POST['watermark_id']);
+    $watermark_url = sanitize_url($_POST['watermark_url']);
+    $sku = sanitize_text_field($_POST['sku']);
+    $quantity = intval($_POST['quantity']);
+    
+    if (!$product_id || !$attachment_id || !$watermark_id) {
+        wp_send_json_error('Invalid parameters');
+    }
+    
+    // Create unique cart item data for this image variation
+    $cart_item_data = array(
+        'wc_pmm_image_variation' => array(
+            'attachment_id' => $attachment_id,
+            'watermark_id' => $watermark_id,
+            'watermark_url' => $watermark_url,
+            'sku' => $sku,
+            'variation_key' => md5($product_id . '_' . $watermark_id . '_' . $sku)
+        )
+    );
+    
+    // Add to cart with custom variation data
+    $cart_item_key = WC()->cart->add_to_cart($product_id, $quantity, 0, array(), $cart_item_data);
+    
+    if ($cart_item_key) {
+        WC_AJAX::get_refreshed_fragments();
+    } else {
+        wp_send_json_error('Failed to add to cart');
+    }
+}
+
+/**
+ * Add custom data to cart item to make each image unique
+ */
+public function add_cart_item_custom_data($cart_item_data, $product_id, $variation_id) {
+    return $cart_item_data;
+}
+
+/**
+ * Display custom image variation data in cart
+ */
+public function display_cart_item_custom_data($item_data, $cart_item) {
+    if (isset($cart_item['wc_pmm_image_variation'])) {
+        $image_data = $cart_item['wc_pmm_image_variation'];
+        $item_data[] = array(
+            'key' => __('Selected Image', 'wc-product-media-manager'),
+            'value' => $image_data['sku'],
+            'display' => '<img src="' . esc_url($image_data['watermark_url']) . '" width="50" height="50" style="border-radius: 3px; margin-right: 10px; vertical-align: middle;"> ' . esc_html($image_data['sku'])
+        );
+    }
+    return $item_data;
+}
+
+/**
+ * Save custom image variation data to order
+ */
+public function save_order_item_custom_data($item, $cart_item_key, $values, $order) {
+    if (isset($values['wc_pmm_image_variation'])) {
+        $image_data = $values['wc_pmm_image_variation'];
+        $item->add_meta_data('_wc_pmm_selected_image', $image_data);
+        $item->add_meta_data('Selected Image SKU', $image_data['sku']);
+        $item->add_meta_data('Selected Image URL', $image_data['watermark_url']);
+    }
+}
 }

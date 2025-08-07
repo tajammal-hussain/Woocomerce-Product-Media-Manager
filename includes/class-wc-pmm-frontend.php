@@ -104,7 +104,6 @@ class WC_PMM_Frontend {
         <div class="wc-pmm-simple-gallery">
             <!-- All Product Titles (Clickable) -->
             <div class="wc-pmm-product-header">
-                <h3><?php _e('Products in this category:', 'wc-product-media-manager'); ?></h3>
                 <div class="wc-pmm-product-links">
                     <?php foreach ($products_with_media as $index => $product_data): ?>
                         <button type="button"
@@ -112,14 +111,9 @@ class WC_PMM_Frontend {
                                 data-product-name="<?php echo esc_attr($product_data['product']->get_name()); ?>"
                                 class="wc-pmm-product-link <?php echo $index === 0 ? 'active' : ''; ?>">
                             <?php echo esc_html($product_data['product']->get_name()); ?>
-                            <span class="wc-pmm-media-count">(<?php echo $product_data['media_count']; ?> images)</span>
+                            <!-- <span class="wc-pmm-media-count">(<?php echo $product_data['media_count']; ?> images)</span> -->
                         </button>
-                        <a href="<?php echo esc_url($product_data['product']->get_permalink()); ?>" 
-                           target="_blank" 
-                           class="wc-pmm-external-link"
-                           title="<?php _e('View product page', 'wc-product-media-manager'); ?>">
-                            <span class="dashicons dashicons-external"></span>
-                        </a>
+                       
                     <?php endforeach; ?>
                 </div>
                 <div class="wc-pmm-showing-from">
@@ -133,12 +127,16 @@ class WC_PMM_Frontend {
                 <?php foreach ($images as $image): ?>
                     <div class=" gallery-col col">
                     <div class="col-inner">
-                                                 <a href="<?php echo esc_url($image['watermark_url']); ?>"
-                         data-productid="<?php echo esc_attr($first_product_with_media->get_id()); ?>"
-                         data-fancybox="products"
-                         data-sku="<?php echo esc_attr($image['sku']); ?>"
-                         data-caption="<?php echo esc_attr($first_product_with_media->get_name()); ?>"
-                         aria-label="<?php echo esc_attr($first_product_with_media->get_name()); ?>"
+                        <a href="<?php echo esc_url($image['watermark_url']); ?>"
+                        data-productid="<?php echo esc_attr($first_product_with_media->get_id()); ?>"
+                        data-fancybox="products"
+                        data-sku="<?php echo esc_attr($image['sku']); ?>"
+                        data-caption="<?php echo esc_attr($first_product_with_media->get_name()); ?>"
+                        aria-label="<?php echo esc_attr($first_product_with_media->get_name()); ?>"
+                        data-attachment-id="<?php echo esc_attr($image['attachment_id']); ?>"
+                        data-watermark-id="<?php echo esc_attr($image['watermark_id']); ?>"
+                        data-watermark-url="<?php echo esc_attr($image['watermark_url']); ?>"
+
                          >
                         <img src="<?php echo esc_url($image['watermark_url']); ?>" 
                              alt="<?php echo esc_attr($image['sku']); ?>"
@@ -182,25 +180,20 @@ class WC_PMM_Frontend {
             align-items: center;
         }
         .wc-pmm-product-link {
-            color: #0073aa;
-            background: #fff;
+            color: rgba(30, 30, 30, 0.6);
             font-weight: bold;
-            padding: 8px 12px;
-            border: 1px solid #0073aa;
-            border-radius: 4px;
+            padding: 0 !important;
             transition: all 0.3s ease;
             cursor: pointer;
-            font-family: inherit;
-            font-size: 14px;
+            font-family: "inter";
+            font-size: 11px;
         }
         .wc-pmm-product-link:hover {
-            color: #fff;
-            background-color: #0073aa;
+            color: #000;
         }
         .wc-pmm-product-link.active {
-            color: #fff;
-            background-color: #0073aa;
-            box-shadow: 0 2px 4px rgba(0,115,170,0.3);
+            color: #000;
+            font-weight:bold;
         }
         .wc-pmm-external-link {
             color: #666;
@@ -353,6 +346,9 @@ class WC_PMM_Frontend {
                                                data-fancybox="products"
                                                data-sku="${image.sku}"
                                                data-caption="${productName}"
+                                               data-attachment-id = "${image.attachment_id}"
+                                               data-watermark-id = "${image.watermark_id}"
+                                               data-watermark-url = "${image.watermark_url}"
                                                aria-label="${productName}">
                                                 <img src="${image.watermark_url}" 
                                                      alt="${image.sku}"
@@ -448,6 +444,9 @@ class WC_PMM_Frontend {
                                             <a href="${image.watermark_url}"
                                                data-productid="${currentProductId}"
                                                data-fancybox="products"
+                                               data-attachment-id = "${image.attachment_id}"
+                                               data-watermark-id = "${image.watermark_id}"
+                                               data-watermark-url = "${image.watermark_url}"
                                                data-sku="${image.sku}"
                                                data-caption="${currentProductName}"
                                                aria-label="${currentProductName}">
