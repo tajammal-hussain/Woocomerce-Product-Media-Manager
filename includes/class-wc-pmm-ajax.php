@@ -21,6 +21,7 @@ class WC_PMM_Ajax {
         add_action('wp_ajax_wc_pmm_update_image_sku', array($this, 'ajax_update_image_sku'));
         add_action('wp_ajax_wc_pmm_get_media_library', array($this, 'ajax_get_media_library'));
         add_action('wp_ajax_wc_pmm_add_to_cart_with_image', array($this, 'ajax_add_to_cart_with_image'));
+        add_action('wp_ajax_wc_pmm_clear_all_images', array($this, 'ajax_clear_all_images'));
         add_filter('woocommerce_add_cart_item_data', array($this, 'add_cart_item_custom_data'), 10, 3);
         add_filter('woocommerce_get_item_data', array($this, 'display_cart_item_custom_data'), 10, 2);
         add_action('woocommerce_checkout_create_order_line_item', array($this, 'save_order_item_custom_data'), 10, 4);
@@ -351,6 +352,46 @@ public function ajax_add_to_cart_with_image() {
         wp_send_json_error('Failed to add to cart');
     }
 }
+
+    /**
+     * Clear all product media (and delete watermarked attachments) via AJAX
+     */
+    public function ajax_clear_all_images() {
+        // Check nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'wc_pmm_nonce')) {
+            wp_send_json_error(__('Security check failed.', 'wc-product-media-manager'));
+        }
+
+        // Check permissions
+        if (!current_user_can('edit_posts')) {
+            wp_send_json_error(__('You do not have permission to perform this action.', 'wc-product-media-manager'));
+        }
+
+        $product_id = intval($_POST['product_id']);
+        if (!$product_id) {
+            wp_send_json_error(__('Invalid product ID.', 'wc-product-media-manager'));
+        }
+
+        $product_media = get_post_meta($product_id, '_wc_pmm_product_media', true);
+        if (!is_array($product_media)) {
+            $product_media = array();
+        }
+
+        // Delete watermarked attachments only (keep original uploads)
+        foreach ($product_media as $media) {
+            if (!empty($media['watermark_id'])) {
+                $watermark_id = intval($media['watermark_id']);
+                if ($watermark_id) {
+                    wp_delete_attachment($watermark_id, true);
+                }
+            }
+        }
+
+        // Clear meta
+        update_post_meta($product_id, '_wc_pmm_product_media', array());
+
+        wp_send_json_success(__('All images cleared.', 'wc-product-media-manager'));
+    }
 
 /**
  * Add custom data to cart item to make each image unique

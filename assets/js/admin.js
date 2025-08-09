@@ -39,6 +39,9 @@
                 console.log('Bulk watermark button clicked');
                 wcPMM.bulkGenerateWatermarks(e);
             });
+
+            // Clear all images
+            $(document).on('click', '#wc-pmm-clear-all', this.clearAllImages.bind(this));
             
             // Form submission
             $('#post').on('submit', this.saveMediaData.bind(this));
@@ -47,6 +50,43 @@
             $(document).on('dragover drop', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
+            });
+        },
+
+        clearAllImages: function(e) {
+            e.preventDefault();
+            if (!confirm(wc_pmm_ajax.strings.confirm_clear)) {
+                return;
+            }
+
+            // Product ID from edit screen
+            let productId = $('#post_ID').val();
+            if (!productId) {
+                this.showError(wc_pmm_ajax.strings.error);
+                return;
+            }
+
+            $.ajax({
+                url: wc_pmm_ajax.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'wc_pmm_clear_all_images',
+                    nonce: wc_pmm_ajax.nonce,
+                    product_id: productId
+                },
+                success: (response) => {
+                    if (response.success) {
+                        this.mediaData = [];
+                        this.renderMediaTable();
+                        this.updateMediaDataField();
+                        this.showSuccess(wc_pmm_ajax.strings.cleared_success);
+                    } else {
+                        this.showError(response.data || wc_pmm_ajax.strings.error);
+                    }
+                },
+                error: () => {
+                    this.showError(wc_pmm_ajax.strings.error);
+                }
             });
         },
         

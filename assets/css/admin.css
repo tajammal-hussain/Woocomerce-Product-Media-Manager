@@ -123,7 +123,8 @@
     color: #1d2327;
 }
 
-#wc-pmm-bulk-watermark {
+#wc-pmm-bulk-watermark,
+#wc-pmm-clear-all {
     font-size: 13px;
     padding: 6px 12px;
 }

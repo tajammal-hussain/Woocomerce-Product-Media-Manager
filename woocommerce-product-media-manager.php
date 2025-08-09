@@ -153,6 +153,8 @@ class WC_Product_Media_Manager {
                     'processing' => __('Processing...', 'wc-product-media-manager'),
                     'error' => __('An error occurred', 'wc-product-media-manager'),
                     'confirm_delete' => __('Are you sure you want to delete this image?', 'wc-product-media-manager'),
+                    'confirm_clear' => __('This will remove all images from this product\'s media gallery and delete generated watermarks. Continue?', 'wc-product-media-manager'),
+                    'cleared_success' => __('All images have been cleared.', 'wc-product-media-manager'),
                 )
             ));
         }
