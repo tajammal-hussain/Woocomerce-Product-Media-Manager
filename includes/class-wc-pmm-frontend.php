@@ -14,6 +14,7 @@ class WC_PMM_Frontend {
      */
     public function __construct() {
         add_shortcode('wc_pmm_simple_gallery', array($this, 'simple_gallery_shortcode'));
+        add_shortcode('wc_pmm_product_gallery', array($this, 'product_gallery_shortcode'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_scripts'));
         add_action('wp_ajax_wc_pmm_load_more_images', array($this, 'ajax_load_more_images'));
         add_action('wp_ajax_nopriv_wc_pmm_load_more_images', array($this, 'ajax_load_more_images'));
@@ -576,6 +577,217 @@ class WC_PMM_Frontend {
             'images' => $images,
             'total' => $total
         );
+    }
+
+    /**
+     * Shortcode: [wc_pmm_product_gallery id="123" per_page="15"]
+     * Renders watermarked media for a single product.
+     */
+    public function product_gallery_shortcode($atts) {
+        $atts = shortcode_atts(
+            array(
+                'id' => 0,
+                'per_page' => 13,
+            ),
+            $atts,
+            'wc_pmm_product_gallery'
+        );
+
+        $product_id = intval($atts['id']);
+        $per_page = max(1, intval($atts['per_page']));
+
+        if (!$product_id) {
+            return '<p>' . esc_html__('Please provide a valid product ID using id="...".', 'wc-product-media-manager') . '</p>';
+        }
+
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            return '<p>' . esc_html__('Product not found.', 'wc-product-media-manager') . '</p>';
+        }
+
+        $media_response = $this->get_product_media_for_display($product_id, 1, $per_page);
+        $images = $media_response['images'];
+
+        if (empty($images)) {
+            return '<div class="wc-pmm-no-products"><p>' . esc_html__('No watermarked images found for this product.', 'wc-product-media-manager') . '</p></div>';
+        }
+
+        $instance_id = 'wc-pmm-pg-' . uniqid();
+
+        ob_start();
+        ?>
+        <div id="<?php echo esc_attr($instance_id); ?>" class="wc-pmm-product-gallery">
+            <!-- <div class="wc-pmm-product-header">
+                <div class="wc-pmm-showing-from">
+                    <?php _e('Showing images from:', 'wc-product-media-manager'); ?>
+                    <strong><?php echo esc_html($product->get_name()); ?></strong>
+                </div>
+            </div> -->
+
+            <div class="row large-columns-4 medium-columns-3 small-columns-2 row-full-width grid_photography ">
+                <?php foreach ($images as $image): ?>
+                    <div class="gallery-col col">
+                        <div class="col-inner">
+                            <a href="<?php echo esc_url($image['watermark_url']); ?>"
+                               data-productid="<?php echo esc_attr($product_id); ?>"
+                               data-fancybox="products"
+                               data-sku="<?php echo esc_attr($image['sku']); ?>"
+                               data-caption="<?php echo esc_attr($product->get_name()); ?>"
+                               aria-label="<?php echo esc_attr($product->get_name()); ?>"
+                               data-attachment-id="<?php echo esc_attr($image['attachment_id']); ?>"
+                               data-watermark-id="<?php echo esc_attr($image['watermark_id']); ?>"
+                               data-watermark-url="<?php echo esc_attr($image['watermark_url']); ?>">
+                                <img src="<?php echo esc_url($image['watermark_url']); ?>"
+                                     alt="<?php echo esc_attr($image['sku']); ?>"
+                                     class="wc-pmm-watermarked-image" />
+
+                            </a>
+                            <div class="wc-pmm-image-overlay">
+                                <div class="wc-pmm-image-overlay-inner">
+                                    <a class="wc-pmm-add-to-cart-button">
+                                        <img src="<?php echo esc_url(WC_PMM_PLUGIN_URL . '/assets/images/bag.svg'); ?>" alt="Zoom" class="wc-pmm-image-overlay-icon">
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+
+            <div id="<?php echo esc_attr($instance_id); ?>-loading" class="wc-pmm-loading" style="display: none;">
+                <p><?php _e('Loading more images...', 'wc-product-media-manager'); ?></p>
+            </div>
+            <div id="<?php echo esc_attr($instance_id); ?>-no-more" class="wc-pmm-no-more" style="display: none;">
+                <p><?php _e('No more images to load.', 'wc-product-media-manager'); ?></p>
+            </div>
+        </div>
+
+        <script type="text/javascript">
+        jQuery(document).ready(function($) {
+            const container = $('#<?php echo esc_js($instance_id); ?>');
+            const imagesGrid = container.find('.row-masonry');
+            const loadingIndicator = $('#<?php echo esc_js($instance_id); ?>-loading');
+            const noMoreIndicator = $('#<?php echo esc_js($instance_id); ?>-no-more');
+            const productId = <?php echo json_encode($product_id); ?>;
+            const perPage = <?php echo json_encode($per_page); ?>;
+            let currentPage = 1;
+            let loading = false;
+            let noMore = false;
+
+            function initializeIsotope() {
+                setTimeout(function() {
+                    if (typeof imagesGrid.isotope === 'function') {
+                        imagesGrid.isotope({
+                            itemSelector: '.gallery-col',
+                            layoutMode: 'masonry',
+                            masonry: { columnWidth: '.gallery-col' }
+                        });
+                    }
+                }, 100);
+            }
+
+            initializeIsotope();
+
+            if (<?php echo (int) $media_response['total']; ?> <= perPage) {
+                noMore = true;
+                return;
+            }
+
+            function appendToIsotope(newElements) {
+                if (typeof $.fancybox !== 'undefined') {
+                    $('[data-fancybox="products"]').fancybox();
+                }
+                setTimeout(function() {
+                    if (typeof imagesGrid.isotope === 'function') {
+                        newElements.forEach(function(element) { imagesGrid.append(element); });
+                        imagesGrid.isotope('appended', newElements);
+                    }
+                }, 200);
+            }
+
+            function loadMoreImages() {
+                if (loading || noMore) return;
+                loading = true;
+                loadingIndicator.show();
+
+                $.ajax({
+                    url: wc_pmm_ajax.ajax_url,
+                    type: 'POST',
+                    data: {
+                        action: 'wc_pmm_load_more_images',
+                        nonce: wc_pmm_ajax.nonce,
+                        product_id: productId,
+                        page: currentPage + 1,
+                        per_page: perPage
+                    },
+                    success: function(response) {
+                        if (response.success && response.data.images.length > 0) {
+                            const images = response.data.images;
+                            let newElements = [];
+                            images.forEach(function(image) {
+                                const newElement = $(
+                                    '<div class="gallery-col col">' +
+                                        '<div class="col-inner">' +
+                                            '<a href="' + image.watermark_url + '" ' +
+                                               'data-productid="' + productId + '" ' +
+                                               'data-fancybox="products" ' +
+                                               'data-attachment-id="' + image.attachment_id + '" ' +
+                                               'data-watermark-id="' + image.watermark_id + '" ' +
+                                               'data-watermark-url="' + image.watermark_url + '" ' +
+                                               'data-sku="' + image.sku + '">' +
+                                                '<img src="' + image.watermark_url + '" alt="' + image.sku + '" class="wc-pmm-watermarked-image" />' +
+                                            '</a>' +
+                                        '</div>' +
+                                    '</div>'
+                                );
+                                newElements.push(newElement[0]);
+                            });
+
+                            // Wait for images to load before appending
+                            let imagesLoaded = 0;
+                            const totalNewImages = images.length;
+                            $(newElements).find('img').each(function() {
+                                const img = new Image();
+                                img.onload = function() {
+                                    imagesLoaded++;
+                                    if (imagesLoaded === totalNewImages) {
+                                        appendToIsotope(newElements);
+                                    }
+                                };
+                                img.src = this.src;
+                            });
+
+                            currentPage++;
+                            if (images.length < perPage) {
+                                noMore = true;
+                                noMoreIndicator.show();
+                            }
+                        } else {
+                            noMore = true;
+                            noMoreIndicator.show();
+                        }
+                        loading = false;
+                        loadingIndicator.hide();
+                    },
+                    error: function() {
+                        loading = false;
+                        loadingIndicator.hide();
+                        // eslint-disable-next-line no-console
+                        console.log('Error loading more images');
+                    }
+                });
+            }
+
+            $(window).on('scroll', function() {
+                if ($(window).scrollTop() + $(window).height() >= $(document).height() - 100) {
+                    loadMoreImages();
+                }
+            });
+        });
+        </script>
+        <?php
+
+        return ob_get_clean();
     }
     
     /**
